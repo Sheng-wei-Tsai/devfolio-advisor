@@ -1,51 +1,94 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-
-const DEFAULT_ITEMS = [
-  { id: "readme",      label: "Add README with screenshots & demo link", category: "docs" },
-  { id: "ci",          label: "Set up CI/CD pipeline (GitHub Actions)", category: "devops" },
-  { id: "tests",       label: "Add test suite (unit + integration)", category: "quality" },
-  { id: "env",         label: "Document all environment variables", category: "docs" },
-  { id: "error",       label: "Add error boundaries & fallback UI", category: "frontend" },
-  { id: "loading",     label: "Add loading & empty state components", category: "frontend" },
-  { id: "auth",        label: "Implement proper auth & authorization", category: "backend" },
-  { id: "validation",  label: "Add input validation & sanitization", category: "backend" },
-  { id: "perf",        label: "Optimize bundle size & Core Web Vitals", category: "frontend" },
-  { id: "a11y",        label: "Audit accessibility (WCAG 2.1 AA)", category: "ux" },
-  { id: "mobile",      label: "Ensure fully responsive on all breakpoints", category: "ux" },
-  { id: "seo",         label: "Add meta tags, OG image, sitemap", category: "docs" },
-  { id: "monitoring",  label: "Add error monitoring (Sentry or similar)", category: "devops" },
-  { id: "rate-limit",  label: "Implement API rate limiting", category: "backend" },
-  { id: "license",     label: "Add LICENSE file", category: "docs" },
-];
+import type { ChecklistItem } from "@/app/api/checklist/route";
 
 const CATEGORY_COLORS: Record<string, string> = {
   docs: "#3b82f6", devops: "#a855f7", quality: "#f59e0b",
   frontend: "#00ff41", backend: "#ef4444", ux: "#ec4899",
 };
 
-export default function ChecklistPanel({ repoId, repoName }: { repoId: string; repoName: string }) {
-  const key = `checklist-${repoId}`;
-  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return {};
-    try { return JSON.parse(localStorage.getItem(key) ?? "{}"); } catch { return {}; }
-  });
+export default function ChecklistPanel({
+  repoId,
+  repoName,
+  refreshKey,
+}: {
+  repoId: string;
+  repoName: string;
+  refreshKey: number;
+}) {
+  const [items, setItems] = useState<ChecklistItem[]>([]);
+  const [completed, setCompleted] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  const fetchChecklist = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/checklist?repoId=${repoId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setItems(data.items ?? []);
+        setCompleted(data.completed ?? {});
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [repoId]);
+
+  useEffect(() => { fetchChecklist(); }, [fetchChecklist, refreshKey]);
+
+  // Detect when parent signals new checklist is being generated
+  useEffect(() => {
+    if (refreshKey > 0) setGenerating(true);
+  }, [refreshKey]);
 
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(checked));
-  }, [checked, key]);
+    if (!loading && generating) setGenerating(false);
+  }, [loading, generating]);
 
-  const toggle = (id: string) => setChecked((p) => ({ ...p, [id]: !p[id] }));
-  const done = DEFAULT_ITEMS.filter((i) => checked[i.id]).length;
-  const pct = Math.round((done / DEFAULT_ITEMS.length) * 100);
+  const toggle = (key: string) => {
+    const next = { ...completed, [key]: !completed[key] };
+    setCompleted(next);
+    fetch("/api/checklist", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoId, completed: next }),
+    }).catch(() => {});
+  };
+
+  const done = items.filter((i) => completed[i.key]).length;
+  const pct = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
+
+  if (loading || generating) {
+    return (
+      <div className="space-y-3">
+        <div className="text-xs prompt animate-pulse" style={{ color: "var(--text-secondary)" }}>
+          {generating ? "generating checklist for " + repoName + "..." : "loading..."}
+        </div>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-10 rounded animate-pulse" style={{ backgroundColor: "var(--bg-elevated)" }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 gap-3">
+        <div className="text-3xl" style={{ color: "var(--text-muted)" }}>☑</div>
+        <div className="text-sm text-center" style={{ color: "var(--text-secondary)" }}>
+          run analysis first to generate a personalised checklist for{" "}
+          <span style={{ color: "var(--neon)" }}>{repoName}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Progress */}
       <div>
         <div className="flex justify-between text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
-          <span>PRODUCTION READINESS</span>
+          <span>PRODUCTION READINESS — {repoName}</span>
           <span className="neon-text">{pct}%</span>
         </div>
         <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--bg-elevated)" }}>
@@ -58,21 +101,21 @@ export default function ChecklistPanel({ repoId, repoName }: { repoId: string; r
           />
         </div>
         <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          {done}/{DEFAULT_ITEMS.length} tasks complete
+          {done}/{items.length} tasks complete
         </div>
       </div>
 
       {/* Items */}
       <div className="space-y-2">
-        {DEFAULT_ITEMS.map((item) => (
+        {items.map((item) => (
           <motion.button
-            key={item.id}
-            onClick={() => toggle(item.id)}
+            key={item.key}
+            onClick={() => toggle(item.key)}
             className="w-full flex items-start gap-3 p-3 rounded text-left transition-all duration-150"
             style={{
-              backgroundColor: checked[item.id] ? "rgba(0,255,65,0.05)" : "var(--bg-elevated)",
+              backgroundColor: completed[item.key] ? "rgba(0,255,65,0.05)" : "var(--bg-elevated)",
               border: "1px solid",
-              borderColor: checked[item.id] ? "var(--neon)" : "var(--border)",
+              borderColor: completed[item.key] ? "var(--neon)" : "var(--border)",
             }}
             whileHover={{ scale: 1.005 }}
             whileTap={{ scale: 0.998 }}
@@ -80,19 +123,19 @@ export default function ChecklistPanel({ repoId, repoName }: { repoId: string; r
             <div
               className="w-4 h-4 rounded-sm flex-shrink-0 mt-0.5 flex items-center justify-center text-xs"
               style={{
-                border: `1px solid ${checked[item.id] ? "var(--neon)" : "var(--text-muted)"}`,
-                backgroundColor: checked[item.id] ? "var(--neon)" : "transparent",
+                border: `1px solid ${completed[item.key] ? "var(--neon)" : "var(--text-muted)"}`,
+                backgroundColor: completed[item.key] ? "var(--neon)" : "transparent",
                 color: "#000",
               }}
             >
-              {checked[item.id] && "✓"}
+              {completed[item.key] && "✓"}
             </div>
             <div className="flex-1 min-w-0">
               <span
                 className="text-xs"
                 style={{
-                  color: checked[item.id] ? "var(--text-muted)" : "var(--text-primary)",
-                  textDecoration: checked[item.id] ? "line-through" : "none",
+                  color: completed[item.key] ? "var(--text-muted)" : "var(--text-primary)",
+                  textDecoration: completed[item.key] ? "line-through" : "none",
                 }}
               >
                 {item.label}
@@ -101,9 +144,9 @@ export default function ChecklistPanel({ repoId, repoName }: { repoId: string; r
             <span
               className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
               style={{
-                color: CATEGORY_COLORS[item.category],
-                backgroundColor: `${CATEGORY_COLORS[item.category]}15`,
-                border: `1px solid ${CATEGORY_COLORS[item.category]}30`,
+                color: CATEGORY_COLORS[item.category] ?? "var(--text-muted)",
+                backgroundColor: `${CATEGORY_COLORS[item.category] ?? "#888"}15`,
+                border: `1px solid ${CATEGORY_COLORS[item.category] ?? "#888"}30`,
               }}
             >
               {item.category}

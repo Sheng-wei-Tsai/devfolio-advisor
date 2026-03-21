@@ -21,6 +21,8 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
   const [loading, setLoading] = useState<Record<Persona, boolean>>(EMPTY_LOADING);
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
+  // Incrementing key tells ChecklistPanel to re-fetch after new analysis
+  const [checklistRefreshKey, setChecklistRefreshKey] = useState(0);
 
   // Load saved results from DB when repo is selected
   useEffect(() => {
@@ -39,6 +41,8 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
     setIsRunning(true);
     setHasResults(true);
 
+    const collected: Record<Persona, string> = { frontend: "", backend: "", ux: "" };
+
     for (const persona of ["frontend", "backend", "ux"] as Persona[]) {
       setLoading((p) => ({ ...p, [persona]: true }));
       setStreams((p) => ({ ...p, [persona]: "" }));
@@ -53,24 +57,37 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       const decoder = new TextDecoder();
       if (!reader) continue;
 
-      let fullContent = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value);
-        fullContent += chunk;
+        collected[persona] += chunk;
         setStreams((p) => ({ ...p, [persona]: p[persona] + chunk }));
       }
 
       setLoading((p) => ({ ...p, [persona]: false }));
 
-      // Persist to DB (upsert — replaces same persona, adds new ones)
+      // Persist analysis result to DB
       fetch("/api/results", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoId: String(repo.id), persona, content: fullContent }),
+        body: JSON.stringify({ repoId: String(repo.id), persona, content: collected[persona] }),
       }).catch(() => {});
     }
+
+    // All 3 analyses done — generate repo-specific checklist
+    setChecklistRefreshKey((k) => k + 1);
+    fetch("/api/checklist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoId: String(repo.id),
+        repoName: repo.name,
+        analyses: collected,
+      }),
+    })
+      .then(() => setChecklistRefreshKey((k) => k + 1))
+      .catch(() => {});
 
     setIsRunning(false);
   };
@@ -148,7 +165,11 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
         <AnimatePresence mode="wait">
           {activeTab === "checklist" ? (
             <motion.div key="checklist" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <ChecklistPanel repoId={String(repo.id)} repoName={repo.name} />
+              <ChecklistPanel
+                repoId={String(repo.id)}
+                repoName={repo.name}
+                refreshKey={checklistRefreshKey}
+              />
             </motion.div>
           ) : (
             <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
