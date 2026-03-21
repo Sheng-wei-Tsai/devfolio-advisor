@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GithubRepo } from "@/lib/github";
 import ChecklistPanel from "@/components/ChecklistPanel";
-import { extractChecklistItems, type ChecklistCategory } from "@/lib/extractChecklist";
+import { extractChecklistItems, mergeChecklistItems, type ChecklistCategory, type ChecklistItem } from "@/lib/extractChecklist";
 import MarkdownContent from "@/components/MarkdownContent";
 
 type Persona = "frontend" | "backend" | "ux";
@@ -68,9 +68,17 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       }).catch(() => {});
     }
 
-    // Extract items and save to localStorage immediately (always works)
-    const items = extractChecklistItems(collected as Record<ChecklistCategory, string>);
-    try { localStorage.setItem(`checklist-items-${repo.id}`, JSON.stringify(items)); } catch { /* ignore */ }
+    // Extract new items and merge with existing (accumulate until fixed)
+    const newItems = extractChecklistItems(collected as Record<ChecklistCategory, string>);
+    let merged = newItems;
+    try {
+      const savedRaw = localStorage.getItem(`checklist-items-${repo.id}`);
+      if (savedRaw) {
+        const existing: ChecklistItem[] = JSON.parse(savedRaw);
+        merged = mergeChecklistItems(existing, newItems);
+      }
+    } catch { /* ignore */ }
+    try { localStorage.setItem(`checklist-items-${repo.id}`, JSON.stringify(merged)); } catch { /* ignore */ }
     setChecklistRefreshKey((k) => k + 1);
 
     // Also sync to Supabase in background (for cross-device persistence)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { extractChecklistItems, type ChecklistItem, type ChecklistCategory } from "@/lib/extractChecklist";
+import { extractChecklistItems, mergeChecklistItems, type ChecklistItem, type ChecklistCategory } from "@/lib/extractChecklist";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
 
   if (error && error.code !== "PGRST116") {
     console.error("Supabase GET error:", error);
+    // Table may not exist yet — return empty gracefully
+    return NextResponse.json({ items: [], completed: {} });
   }
 
   return NextResponse.json({
@@ -41,14 +43,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const items = extractChecklistItems(analyses);
+  const newItems = extractChecklistItems(analyses);
 
-  // Preserve existing completion state
+  // Load existing items + completion state, then merge
   const { data: existing } = await supabase
     .from("repo_checklist")
-    .select("completed")
+    .select("items, completed")
     .eq("repo_id", repoId)
     .single();
+
+  const existingItems: ChecklistItem[] = existing?.items ?? [];
+  const items = mergeChecklistItems(existingItems, newItems);
 
   const { error } = await supabase.from("repo_checklist").upsert(
     { repo_id: repoId, items, completed: existing?.completed ?? {}, updated_at: new Date().toISOString() },
@@ -57,7 +62,8 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     console.error("Supabase upsert error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Return items even if DB save failed (client already has them in localStorage)
+    return NextResponse.json({ items, warning: error.message });
   }
 
   return NextResponse.json({ items });

@@ -4,7 +4,8 @@ import { motion } from "framer-motion";
 // AnimatePresence removed — detail always visible now
 import type { ChecklistItem } from "@/lib/extractChecklist";
 
-function renderInline(text: string) {
+function renderInline(text: string | undefined) {
+  if (!text) return null;
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**"))
@@ -48,10 +49,20 @@ export default function ChecklistPanel({
       const savedItems = localStorage.getItem(`checklist-items-${repoId}`);
       const savedDone = localStorage.getItem(`checklist-done-${repoId}`);
       if (savedItems) {
-        setItems(JSON.parse(savedItems));
-        setCompleted(savedDone ? JSON.parse(savedDone) : {});
-        setLoading(false);
-        return;
+        const parsed = JSON.parse(savedItems);
+        // Validate shape — old items had {label} not {title,detail}; clear if stale
+        const valid = Array.isArray(parsed) && parsed.every((it: unknown) =>
+          it && typeof it === "object" && "title" in (it as object) && typeof (it as { title: unknown }).title === "string"
+        );
+        if (valid) {
+          setItems(parsed);
+          setCompleted(savedDone ? JSON.parse(savedDone) : {});
+          setLoading(false);
+          return;
+        }
+        // Stale shape — clear both keys
+        localStorage.removeItem(`checklist-items-${repoId}`);
+        localStorage.removeItem(`checklist-done-${repoId}`);
       }
     } catch { /* ignore */ }
 

@@ -1,23 +1,28 @@
 export type Persona = "frontend" | "backend" | "ux";
 
-const FORMAT_RULE = `Format EXACTLY as:
-1. **Precise issue title**: One sentence describing the exact problem and the specific fix, naming the actual file/function/variable involved.
+const FORMAT_RULE = `Format EXACTLY as a numbered list. Each item has two parts separated by a colon:
+- TITLE (bold): The high-level concern a senior developer would flag — describe the problem category, not a specific file.
+- DETAIL: One sentence that zooms in — name the specific file, function, or pattern that needs fixing and what to do.
 
-Example: "1. **Google Fonts \`<link>\` in app/layout.tsx blocks rendering**: Replace the \`<link>\` tags with \`import { JetBrains_Mono } from 'next/font/google'\` and apply the returned className to \`<body>\` for automatic optimization."
+Example:
+1. **Render-blocking font loading**: The \`<link>\` tags in \`app/layout.tsx\` block the main thread — replace them with \`next/font/google\` to get automatic preloading and zero layout shift.
 
-Do NOT write generic advice. Every item must name a real file or code pattern visible in the code above.`;
+Keep titles short (4–7 words). Details should be specific and actionable.`;
 
 export const SYSTEM_PROMPTS: Record<Persona, string> = {
-  frontend: `You are a senior Frontend Engineer reviewing an actual GitHub repository.
-Give exactly 5 numbered recommendations based only on the real code shown.
+  frontend: `You are a senior Frontend Engineer doing a portfolio code review.
+Your job: identify the 5 most impactful things a hiring manager or tech lead would notice as weaknesses.
+Start broad (the concern), then zoom in (the exact code).
 ${FORMAT_RULE}`,
 
-  backend: `You are a senior Backend Engineer reviewing an actual GitHub repository.
-Give exactly 5 numbered recommendations based only on the real code shown.
+  backend: `You are a senior Backend Engineer doing a portfolio code review.
+Your job: identify the 5 most impactful things a hiring manager or tech lead would notice as weaknesses.
+Start broad (the concern), then zoom in (the exact code).
 ${FORMAT_RULE}`,
 
-  ux: `You are a senior UX/UI Designer reviewing an actual GitHub repository.
-Give exactly 5 numbered recommendations based only on the real code shown.
+  ux: `You are a senior UX/UI Designer doing a portfolio code review.
+Your job: identify the 5 most impactful things a hiring manager or design lead would notice as weaknesses.
+Start broad (the concern), then zoom in (the exact code).
 ${FORMAT_RULE}`,
 };
 
@@ -28,9 +33,9 @@ export function buildUserPrompt(
 ): string {
   const codeSection = codeSnapshot
     ? `\n\n## Actual Code\n${codeSnapshot}`
-    : "\n\n## Actual Code\n(Not available — give best-effort advice based on metadata only)";
+    : "\n\n## Actual Code\n(Not available — give best-effort advice based on repo metadata only)";
 
-  return `Analyze this repository as a ${persona} expert and give your top 5 recommendations.
+  return `Review this repository as a ${persona} expert. Give exactly 5 recommendations ordered by impact (most critical first).
 
 ## Repository
 Name: ${repo.name}
@@ -39,5 +44,5 @@ Language: ${repo.language ?? "unknown"}
 Topics: ${repo.topics?.join(", ") || "none"}
 ${codeSection}
 
-Give exactly 5 numbered recommendations. Each must reference something specific from the code above.`;
+Give exactly 5 numbered items. Each title = the strategic concern. Each detail = the specific file or code to fix.`;
 }
