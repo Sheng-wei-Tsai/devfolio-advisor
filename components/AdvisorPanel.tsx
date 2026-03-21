@@ -53,30 +53,9 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
         body: JSON.stringify({ repo, persona }),
       });
 
-      if (!res.ok || !res.body) {
-        const errText = await res.text().catch(() => "Failed to reach server");
-        collected[persona] = errText;
-        setStreams((p) => ({ ...p, [persona]: errText }));
-        setLoading((p) => ({ ...p, [persona]: false }));
-        continue;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value);
-          collected[persona] += chunk;
-          setStreams((p) => ({ ...p, [persona]: p[persona] + chunk }));
-        }
-      } catch {
-        const msg = "\n\n⚠ Connection lost. Please re-run analysis.";
-        collected[persona] += msg;
-        setStreams((p) => ({ ...p, [persona]: p[persona] + msg }));
-      }
+      const text = await res.text().catch(() => "⚠ Failed to reach server.");
+      collected[persona] = text;
+      setStreams((p) => ({ ...p, [persona]: text }));
 
       setLoading((p) => ({ ...p, [persona]: false }));
 
