@@ -13,9 +13,9 @@ async function createWithRetry(
 ): Promise<string> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const msg = await anthropic.messages.create(params);
-      const block = msg.content[0];
-      return block.type === "text" ? block.text : "";
+      const msg = await anthropic.messages.create({ ...params, stream: false });
+      const block = (msg as { content: Array<{ type: string; text?: string }> }).content[0];
+      return block?.type === "text" ? (block.text ?? "") : "";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       const isOverloaded = msg.includes("overloaded") || msg.includes("529");

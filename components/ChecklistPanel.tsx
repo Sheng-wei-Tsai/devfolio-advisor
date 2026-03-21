@@ -1,7 +1,19 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Fragment, useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+// AnimatePresence removed — detail always visible now
 import type { ChecklistItem } from "@/lib/extractChecklist";
+
+function renderInline(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**"))
+      return <strong key={i} style={{ color: "var(--text-primary)" }}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`"))
+      return <code key={i} className="rounded px-1" style={{ backgroundColor: "var(--bg-primary)", color: "var(--neon)", fontSize: "0.7rem", border: "1px solid var(--border-bright)" }}>{part.slice(1, -1)}</code>;
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
 
 const CATEGORY_COLOR: Record<string, string> = {
   frontend: "#3b82f6",
@@ -27,7 +39,6 @@ export default function ChecklistPanel({
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const loadChecklist = useCallback(() => {
     setLoading(true);
@@ -69,9 +80,6 @@ export default function ChecklistPanel({
       body: JSON.stringify({ repoId, completed: next }),
     }).catch(() => {});
   };
-
-  const toggleExpand = (key: string) =>
-    setExpanded((p) => ({ ...p, [key]: !p[key] }));
 
   const done = items.filter((i) => completed[i.key]).length;
   const pct = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
@@ -151,7 +159,6 @@ export default function ChecklistPanel({
             <div className="space-y-2">
               {group.map((item) => {
                 const isChecked = !!completed[item.key];
-                const isExpanded = !!expanded[item.key];
                 const hasDetail = !!item.detail;
 
                 return (
@@ -164,12 +171,11 @@ export default function ChecklistPanel({
                       borderColor: isChecked ? "rgba(0,255,65,0.3)" : "var(--border)",
                     }}
                   >
-                    {/* Title row */}
                     <div className="flex items-start gap-3 p-3">
                       {/* Checkbox */}
                       <button
                         onClick={() => toggle(item.key)}
-                        className="flex-shrink-0 mt-0.5 w-4 h-4 rounded-sm flex items-center justify-center text-xs transition-all"
+                        className="flex-shrink-0 mt-1 w-4 h-4 rounded-sm flex items-center justify-center text-xs transition-all"
                         aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
                         style={{
                           border: `1px solid ${isChecked ? "var(--neon)" : "var(--text-muted)"}`,
@@ -180,57 +186,24 @@ export default function ChecklistPanel({
                         {isChecked && "✓"}
                       </button>
 
-                      {/* Title */}
-                      <span
-                        className="text-xs flex-1 leading-relaxed"
-                        style={{
-                          color: isChecked ? "var(--text-muted)" : "var(--text-primary)",
-                          textDecoration: isChecked ? "line-through" : "none",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {item.title}
-                      </span>
-
-                      {/* Expand toggle */}
-                      {hasDetail && (
-                        <button
-                          onClick={() => toggleExpand(item.key)}
-                          className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded transition-all"
+                      {/* Title + detail */}
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="text-xs leading-relaxed font-medium mb-1"
                           style={{
-                            color: isExpanded ? color : "var(--text-muted)",
-                            border: `1px solid ${isExpanded ? color + "50" : "var(--border)"}`,
+                            color: isChecked ? "var(--text-muted)" : "var(--text-primary)",
+                            textDecoration: isChecked ? "line-through" : "none",
                           }}
                         >
-                          {isExpanded ? "▲" : "▼"}
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Detail — expandable */}
-                    <AnimatePresence>
-                      {hasDetail && isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          style={{ overflow: "hidden" }}
-                        >
-                          <div
-                            className="px-3 pb-3 text-xs leading-relaxed"
-                            style={{
-                              color: "var(--text-secondary)",
-                              borderTop: `1px solid ${color}20`,
-                              paddingTop: "0.5rem",
-                              marginLeft: "1.75rem",
-                            }}
-                          >
-                            {item.detail}
+                          {renderInline(item.title)}
+                        </div>
+                        {hasDetail && (
+                          <div className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                            {renderInline(item.detail)}
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               })}

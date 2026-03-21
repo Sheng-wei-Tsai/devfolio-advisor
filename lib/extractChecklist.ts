@@ -2,42 +2,54 @@ export type ChecklistCategory = "frontend" | "backend" | "ux";
 
 export interface ChecklistItem {
   key: string;
-  title: string;   // Short title e.g. "Self-managed OAuth is a security risk"
-  detail: string;  // Full specific advice with file references
+  title: string;  // bold part: "Google Fonts <link> in app/layout.tsx blocks rendering"
+  detail: string; // explanation after the colon
   category: ChecklistCategory;
 }
 
 function parsePersonaItems(text: string, persona: ChecklistCategory): ChecklistItem[] {
   const items: ChecklistItem[] = [];
+  const lines = text.split("\n");
 
-  // Split on numbered lines: "1. ", "2. ", etc.
-  const sections = text.split(/(?=^\d+\.)/m).filter((s) => /^\d+\./.test(s.trim()));
+  // Find line indices where numbered items start
+  const starts: number[] = [];
+  lines.forEach((line, idx) => {
+    if (/^\d+\.\s/.test(line.trim())) starts.push(idx);
+  });
 
-  for (let i = 0; i < Math.min(sections.length, 5); i++) {
-    const section = sections[i].trim();
+  for (let i = 0; i < Math.min(starts.length, 5); i++) {
+    const end = starts[i + 1] ?? lines.length;
+
+    // Collapse all lines of this item into a single string
+    const content = lines
+      .slice(starts[i], end)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(" ")
+      .replace(/^\d+\.\s+/, ""); // remove "1. " prefix
+
     let title = "";
     let detail = "";
 
-    // Format: "1. **Title**: detail text (possibly multiline)"
-    const boldMatch = section.match(/^\d+\.\s+\*\*([^*\n]+)\*\*[:\s—–]+(.+)/s);
-    if (boldMatch) {
-      title = boldMatch[1].trim().replace(/[`*]/g, "");
-      detail = boldMatch[2].trim().replace(/\n+/g, " ").replace(/\s{2,}/g, " ");
+    // Format: **Title**: detail  ([\s\S] instead of . with s flag for TS compat)
+    const boldColon = content.match(/^\*\*(.+?)\*\*\s*[:\u2014\u2013\-]+\s*([\s\S]*)/);
+    if (boldColon) {
+      title = boldColon[1].trim().replace(/`/g, "");
+      detail = boldColon[2].trim();
     } else {
-      // Format: "1. Title: detail text"
-      const plainMatch = section.match(/^\d+\.\s+(.+?)[:\s—–]{1,3}(.+)/s);
-      if (plainMatch) {
-        title = plainMatch[1].trim().replace(/[`*]/g, "");
-        detail = plainMatch[2].trim().replace(/\n+/g, " ").replace(/\s{2,}/g, " ");
+      // Format: Title: detail  (no bold)
+      const colonIdx = content.indexOf(":");
+      if (colonIdx > 4 && colonIdx < 120) {
+        title = content.slice(0, colonIdx).trim().replace(/[*`]/g, "");
+        detail = content.slice(colonIdx + 1).trim();
       } else {
-        // Fallback: whole first line as title
-        const firstLine = section.replace(/^\d+\.\s+/, "").split("\n")[0].trim();
-        title = firstLine.replace(/[`*]/g, "");
-        detail = "";
+        // Fallback: whole content as title
+        title = content.slice(0, 100).trim().replace(/[*`]/g, "");
+        detail = content.length > 100 ? content.slice(100).trim() : "";
       }
     }
 
-    if (title.length >= 5) {
+    if (title.length >= 3) {
       items.push({ key: `${persona}-${i}`, title, detail, category: persona });
     }
   }
