@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GithubRepo } from "@/lib/github";
 import ChecklistPanel from "@/components/ChecklistPanel";
+import { extractChecklistItems, type ChecklistCategory } from "@/lib/extractChecklist";
 
 type Persona = "frontend" | "backend" | "ux";
 
@@ -21,7 +22,6 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
   const [loading, setLoading] = useState<Record<Persona, boolean>>(EMPTY_LOADING);
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
-  // Incrementing key tells ChecklistPanel to re-fetch after new analysis
   const [checklistRefreshKey, setChecklistRefreshKey] = useState(0);
 
   // Load saved results from DB when repo is selected
@@ -53,9 +53,13 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
         body: JSON.stringify({ repo, persona }),
       });
 
-      const reader = res.body?.getReader();
+      if (!res.ok || !res.body) {
+        setLoading((p) => ({ ...p, [persona]: false }));
+        continue;
+      }
+
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      if (!reader) continue;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -75,26 +79,12 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       }).catch(() => {});
     }
 
-    // All 3 analyses done — generate repo-specific checklist
-    setChecklistRefreshKey((k) => k + 1); // signals "generating" to ChecklistPanel
-    try {
-      const checklistRes = await fetch("/api/checklist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoId: String(repo.id),
-          repoName: repo.name,
-          analyses: collected,
-        }),
-      });
-      if (!checklistRes.ok) {
-        const err = await checklistRes.text();
-        console.error("Checklist generation failed:", err);
-      }
-    } catch (e) {
-      console.error("Checklist generation error:", e);
+    // Extract checklist items directly from the analysis text and save to localStorage
+    const items = extractChecklistItems(collected as Record<ChecklistCategory, string>);
+    if (items.length > 0) {
+      localStorage.setItem(`checklist-items-${repo.id}`, JSON.stringify(items));
+      setChecklistRefreshKey((k) => k + 1);
     }
-    setChecklistRefreshKey((k) => k + 1); // triggers re-fetch with new items
 
     setIsRunning(false);
   };
@@ -139,7 +129,7 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
           <button
             key={p.id}
             onClick={() => setActiveTab(p.id)}
-            className="px-5 py-3 text-xs font-medium transition-all duration-150 relative"
+            className="px-5 py-3 text-xs font-medium transition-all duration-150"
             style={{
               color: activeTab === p.id ? p.color : "var(--text-muted)",
               borderBottom: activeTab === p.id ? `2px solid ${p.color}` : "2px solid transparent",
