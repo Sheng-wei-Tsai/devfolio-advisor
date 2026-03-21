@@ -1,15 +1,18 @@
 "use client";
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import type { ChecklistItem } from "@/lib/extractChecklist";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  frontend: "#3b82f6", backend: "#a855f7", ux: "#f59e0b",
-  docs: "#00ff41", devops: "#ef4444", quality: "#ec4899",
+const CATEGORY_COLOR: Record<string, string> = {
+  frontend: "#3b82f6",
+  backend: "#a855f7",
+  ux: "#f59e0b",
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
-  frontend: "Frontend", backend: "Backend", ux: "UX/UI",
+  frontend: "Frontend",
+  backend: "Backend",
+  ux: "UX / UI",
 };
 
 export default function ChecklistPanel({
@@ -21,33 +24,58 @@ export default function ChecklistPanel({
   repoName: string;
   refreshKey: number;
 }) {
-  const itemsKey = `checklist-items-${repoId}`;
-  const doneKey = `checklist-done-${repoId}`;
-
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  // Reload from localStorage whenever refreshKey changes or on mount
-  useEffect(() => {
-    try {
-      const savedItems = localStorage.getItem(itemsKey);
-      const savedDone = localStorage.getItem(doneKey);
-      setItems(savedItems ? JSON.parse(savedItems) : []);
-      setCompleted(savedDone ? JSON.parse(savedDone) : {});
-    } catch {
-      setItems([]);
-      setCompleted({});
-    }
-  }, [repoId, refreshKey, itemsKey, doneKey]);
+  const fetchChecklist = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/checklist?repoId=${repoId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setItems(data.items ?? []);
+        setCompleted(data.completed ?? {});
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [repoId]);
+
+  useEffect(() => { fetchChecklist(); }, [fetchChecklist, refreshKey]);
 
   const toggle = (key: string) => {
     const next = { ...completed, [key]: !completed[key] };
     setCompleted(next);
-    try { localStorage.setItem(doneKey, JSON.stringify(next)); } catch { /* ignore */ }
+    fetch("/api/checklist", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoId, completed: next }),
+    }).catch(() => {});
   };
+
+  const toggleExpand = (key: string) =>
+    setExpanded((p) => ({ ...p, [key]: !p[key] }));
 
   const done = items.filter((i) => completed[i.key]).length;
   const pct = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
+
+  const grouped = items.reduce<Record<string, ChecklistItem[]>>((acc, item) => {
+    (acc[item.category] ??= []).push(item);
+    return acc;
+  }, {});
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="text-xs animate-pulse prompt" style={{ color: "var(--text-secondary)" }}>
+          loading checklist...
+        </div>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-14 rounded animate-pulse" style={{ backgroundColor: "var(--bg-elevated)" }} />
+        ))}
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -61,19 +89,13 @@ export default function ChecklistPanel({
     );
   }
 
-  // Group by category
-  const grouped = items.reduce<Record<string, ChecklistItem[]>>((acc, item) => {
-    (acc[item.category] ??= []).push(item);
-    return acc;
-  }, {});
-
   return (
     <div className="space-y-6">
-      {/* Progress */}
+      {/* Progress bar */}
       <div>
         <div className="flex justify-between text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
-          <span>PRODUCTION READINESS — {repoName}</span>
-          <span className="neon-text">{pct}%</span>
+          <span className="prompt" style={{ letterSpacing: "0.08em" }}>PRODUCTION READINESS — {repoName}</span>
+          <span className="neon-text font-bold">{pct}%</span>
         </div>
         <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--bg-elevated)" }}>
           <motion.div
@@ -81,66 +103,124 @@ export default function ChecklistPanel({
             style={{ backgroundColor: "var(--neon)", boxShadow: "0 0 8px var(--neon)" }}
             initial={{ width: 0 }}
             animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.5 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           />
         </div>
         <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-          {done}/{items.length} tasks complete
+          {done} / {items.length} resolved
         </div>
       </div>
 
       {/* Items grouped by persona */}
-      {Object.entries(grouped).map(([category, groupItems]) => (
-        <div key={category} className="space-y-2">
-          <div className="text-xs font-medium mb-2" style={{ color: CATEGORY_COLORS[category], letterSpacing: "0.1em" }}>
-            {CATEGORY_LABEL[category] ?? category.toUpperCase()} IMPROVEMENTS
-          </div>
-          {groupItems.map((item) => (
-            <motion.button
-              key={item.key}
-              onClick={() => toggle(item.key)}
-              className="w-full flex items-start gap-3 p-3 rounded text-left transition-all duration-150"
-              style={{
-                backgroundColor: completed[item.key] ? "rgba(0,255,65,0.05)" : "var(--bg-elevated)",
-                border: "1px solid",
-                borderColor: completed[item.key] ? "var(--neon)" : "var(--border)",
-              }}
-              whileHover={{ scale: 1.005 }}
-              whileTap={{ scale: 0.998 }}
+      {(["frontend", "backend", "ux"] as const).map((category) => {
+        const group = grouped[category];
+        if (!group?.length) return null;
+        const color = CATEGORY_COLOR[category];
+
+        return (
+          <div key={category}>
+            {/* Section header */}
+            <div
+              className="flex items-center gap-2 mb-3 text-xs font-semibold"
+              style={{ color, letterSpacing: "0.12em" }}
             >
-              <div
-                className="w-4 h-4 rounded-sm flex-shrink-0 mt-0.5 flex items-center justify-center text-xs"
-                style={{
-                  border: `1px solid ${completed[item.key] ? "var(--neon)" : "var(--text-muted)"}`,
-                  backgroundColor: completed[item.key] ? "var(--neon)" : "transparent",
-                  color: "#000",
-                }}
-              >
-                {completed[item.key] && "✓"}
-              </div>
-              <span
-                className="text-xs flex-1"
-                style={{
-                  color: completed[item.key] ? "var(--text-muted)" : "var(--text-primary)",
-                  textDecoration: completed[item.key] ? "line-through" : "none",
-                }}
-              >
-                {item.label}
+              <div className="w-1 h-4 rounded-full" style={{ backgroundColor: color }} />
+              {CATEGORY_LABEL[category].toUpperCase()} RECOMMENDATIONS
+              <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                ({group.filter((i) => completed[i.key]).length}/{group.length})
               </span>
-              <span
-                className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-                style={{
-                  color: CATEGORY_COLORS[category],
-                  backgroundColor: `${CATEGORY_COLORS[category]}15`,
-                  border: `1px solid ${CATEGORY_COLORS[category]}30`,
-                }}
-              >
-                {CATEGORY_LABEL[category] ?? category}
-              </span>
-            </motion.button>
-          ))}
-        </div>
-      ))}
+            </div>
+
+            <div className="space-y-2">
+              {group.map((item) => {
+                const isChecked = !!completed[item.key];
+                const isExpanded = !!expanded[item.key];
+                const hasDetail = !!item.detail;
+
+                return (
+                  <div
+                    key={item.key}
+                    className="rounded transition-all duration-150"
+                    style={{
+                      backgroundColor: isChecked ? "rgba(0,255,65,0.04)" : "var(--bg-elevated)",
+                      border: "1px solid",
+                      borderColor: isChecked ? "rgba(0,255,65,0.3)" : "var(--border)",
+                    }}
+                  >
+                    {/* Title row */}
+                    <div className="flex items-start gap-3 p-3">
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggle(item.key)}
+                        className="flex-shrink-0 mt-0.5 w-4 h-4 rounded-sm flex items-center justify-center text-xs transition-all"
+                        aria-label={isChecked ? "Mark incomplete" : "Mark complete"}
+                        style={{
+                          border: `1px solid ${isChecked ? "var(--neon)" : "var(--text-muted)"}`,
+                          backgroundColor: isChecked ? "var(--neon)" : "transparent",
+                          color: "#000",
+                        }}
+                      >
+                        {isChecked && "✓"}
+                      </button>
+
+                      {/* Title */}
+                      <span
+                        className="text-xs flex-1 leading-relaxed"
+                        style={{
+                          color: isChecked ? "var(--text-muted)" : "var(--text-primary)",
+                          textDecoration: isChecked ? "line-through" : "none",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {item.title}
+                      </span>
+
+                      {/* Expand toggle */}
+                      {hasDetail && (
+                        <button
+                          onClick={() => toggleExpand(item.key)}
+                          className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded transition-all"
+                          style={{
+                            color: isExpanded ? color : "var(--text-muted)",
+                            border: `1px solid ${isExpanded ? color + "50" : "var(--border)"}`,
+                          }}
+                        >
+                          {isExpanded ? "▲" : "▼"}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Detail — expandable */}
+                    <AnimatePresence>
+                      {hasDetail && isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ overflow: "hidden" }}
+                        >
+                          <div
+                            className="px-3 pb-3 text-xs leading-relaxed"
+                            style={{
+                              color: "var(--text-secondary)",
+                              borderTop: `1px solid ${color}20`,
+                              paddingTop: "0.5rem",
+                              marginLeft: "1.75rem",
+                            }}
+                          >
+                            {item.detail}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

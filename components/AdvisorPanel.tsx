@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GithubRepo } from "@/lib/github";
 import ChecklistPanel from "@/components/ChecklistPanel";
-import { extractChecklistItems, type ChecklistCategory } from "@/lib/extractChecklist";
+import type { ChecklistCategory } from "@/lib/extractChecklist";
 
 type Persona = "frontend" | "backend" | "ux";
 
@@ -67,12 +67,14 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       }).catch(() => {});
     }
 
-    // Extract checklist items directly from the analysis text and save to localStorage
-    const items = extractChecklistItems(collected as Record<ChecklistCategory, string>);
-    if (items.length > 0) {
-      localStorage.setItem(`checklist-items-${repo.id}`, JSON.stringify(items));
-      setChecklistRefreshKey((k) => k + 1);
-    }
+    // Save analyses to DB — checklist API extracts items and persists them
+    setChecklistRefreshKey((k) => k + 1); // show loading state in checklist tab
+    await fetch("/api/checklist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoId: String(repo.id), analyses: collected }),
+    }).catch(console.error);
+    setChecklistRefreshKey((k) => k + 1); // trigger re-fetch with new items
 
     setIsRunning(false);
   };
