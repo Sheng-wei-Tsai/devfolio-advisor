@@ -7,6 +7,24 @@ import { fetchRepoCode } from "@/lib/repoCode";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const VALID_PERSONAS = new Set(["frontend", "backend", "ux"]);
 
+async function streamWithRetry(params: Parameters<typeof anthropic.messages.stream>[0], retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await anthropic.messages.stream(params);
+    } catch (err: unknown) {
+      const isOverloaded =
+        err instanceof Error &&
+        (err.message.includes("overloaded") || err.message.includes("529"));
+      if (isOverloaded && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Max retries reached");
+}
+
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const { ok } = rateLimit(ip, 10, 60_000);
@@ -39,26 +57,48 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid repo", { status: 400 });
   }
 
-  // Fetch actual code from GitHub using the user's token
+  // Fetch code with a 8s timeout so slow GitHub responses don't block everything
   const token = req.cookies.get("gh_token")?.value;
-  const codeSnapshot = token ? await fetchRepoCode(repo.full_name, repo.default_branch, token) : "";
+  const codeSnapshot = token
+    ? await Promise.race([
+        fetchRepoCode(repo.full_name, repo.default_branch, token),
+        new Promise<string>((r) => setTimeout(() => r(""), 8000)),
+      ])
+    : "";
 
-  const stream = await anthropic.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: 800,
-    system: SYSTEM_PROMPTS[persona],
-    messages: [{ role: "user", content: buildUserPrompt(repo, persona, codeSnapshot) }],
-  });
+  let stream: Awaited<ReturnType<typeof anthropic.messages.stream>>;
+  try {
+    stream = await streamWithRetry({
+      model: "claude-sonnet-4-6",
+      max_tokens: 800,
+      system: SYSTEM_PROMPTS[persona],
+      messages: [{ role: "user", content: buildUserPrompt(repo, persona, codeSnapshot) }],
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    const isOverloaded = msg.includes("overloaded");
+    return new Response(
+      isOverloaded
+        ? "⚠ Claude API is overloaded. Please wait a moment and try again."
+        : `⚠ Analysis failed: ${msg}`,
+      { status: isOverloaded ? 503 : 500 }
+    );
+  }
 
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
     async start(controller) {
-      for await (const event of stream) {
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-          controller.enqueue(encoder.encode(event.delta.text));
+      try {
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            controller.enqueue(encoder.encode(event.delta.text));
+          }
         }
+      } catch {
+        controller.enqueue(encoder.encode("\n\n⚠ Stream interrupted. Please re-run analysis."));
+      } finally {
+        controller.close();
       }
-      controller.close();
     },
   });
 

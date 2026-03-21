@@ -54,6 +54,9 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       });
 
       if (!res.ok || !res.body) {
+        const errText = await res.text().catch(() => "Failed to reach server");
+        collected[persona] = errText;
+        setStreams((p) => ({ ...p, [persona]: errText }));
         setLoading((p) => ({ ...p, [persona]: false }));
         continue;
       }
@@ -61,12 +64,18 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        collected[persona] += chunk;
-        setStreams((p) => ({ ...p, [persona]: p[persona] + chunk }));
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          collected[persona] += chunk;
+          setStreams((p) => ({ ...p, [persona]: p[persona] + chunk }));
+        }
+      } catch {
+        const msg = "\n\n⚠ Connection lost. Please re-run analysis.";
+        collected[persona] += msg;
+        setStreams((p) => ({ ...p, [persona]: p[persona] + msg }));
       }
 
       setLoading((p) => ({ ...p, [persona]: false }));
