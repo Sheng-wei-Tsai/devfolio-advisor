@@ -17,6 +17,8 @@ export default function RepoCard({ repo, selected, onClick }: {
   return (
     <button
       onClick={onClick}
+      aria-label={`Select repository ${repo.name}`}
+      aria-pressed={selected}
       className="card card-neon w-full text-left p-4 space-y-2 transition-all duration-200"
       style={{
         borderColor: selected ? "var(--neon)" : undefined,

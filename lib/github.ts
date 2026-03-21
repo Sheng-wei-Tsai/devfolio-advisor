@@ -14,7 +14,7 @@ export interface GithubRepo {
 }
 
 export async function fetchTopRepos(accessToken: string): Promise<GithubRepo[]> {
-  const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=5&type=owner", {
+  const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=15&type=owner", {
     headers: { Authorization: `Bearer ${accessToken}`, "X-GitHub-Api-Version": "2022-11-28" },
   });
   if (!res.ok) throw new Error("Failed to fetch repos");

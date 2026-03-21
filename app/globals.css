@@ -70,3 +70,26 @@ body {
 
 /* Selection */
 ::selection { background: var(--neon-glow-strong); color: var(--neon); }
+
+/* Responsive: stack sidebar on small screens */
+@media (max-width: 768px) {
+  .dashboard-layout {
+    flex-direction: column;
+    height: auto;
+  }
+  .repo-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    max-height: 40vh;
+  }
+  .advisor-main {
+    min-height: 60vh;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 2px;
+}
