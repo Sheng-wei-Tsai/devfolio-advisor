@@ -90,12 +90,17 @@ Valid categories: frontend, backend, ux, docs, devops, quality`;
     .eq("repo_id", repoId)
     .single();
 
-  await supabase.from("repo_checklist").upsert({
+  const { error } = await supabase.from("repo_checklist").upsert({
     repo_id: repoId,
     items,
     completed: existing?.completed ?? {},
     updated_at: new Date().toISOString(),
   }, { onConflict: "repo_id" });
+
+  if (error) {
+    console.error("Supabase upsert error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ items });
 }

@@ -32,5 +32,8 @@ create table if not exists checklist_items (
 
 alter table checklist_items enable row level security;
 
-create policy "Users manage own checklist" on checklist_items
-  for all using (auth.uid() = user_id);
+do $$ begin
+  create policy "Users manage own checklist" on checklist_items
+    for all using (auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;

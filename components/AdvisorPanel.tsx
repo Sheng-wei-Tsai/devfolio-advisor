@@ -76,18 +76,25 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
     }
 
     // All 3 analyses done — generate repo-specific checklist
-    setChecklistRefreshKey((k) => k + 1);
-    fetch("/api/checklist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        repoId: String(repo.id),
-        repoName: repo.name,
-        analyses: collected,
-      }),
-    })
-      .then(() => setChecklistRefreshKey((k) => k + 1))
-      .catch(() => {});
+    setChecklistRefreshKey((k) => k + 1); // signals "generating" to ChecklistPanel
+    try {
+      const checklistRes = await fetch("/api/checklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoId: String(repo.id),
+          repoName: repo.name,
+          analyses: collected,
+        }),
+      });
+      if (!checklistRes.ok) {
+        const err = await checklistRes.text();
+        console.error("Checklist generation failed:", err);
+      }
+    } catch (e) {
+      console.error("Checklist generation error:", e);
+    }
+    setChecklistRefreshKey((k) => k + 1); // triggers re-fetch with new items
 
     setIsRunning(false);
   };
