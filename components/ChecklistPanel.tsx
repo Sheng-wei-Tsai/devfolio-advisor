@@ -29,8 +29,22 @@ export default function ChecklistPanel({
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const fetchChecklist = useCallback(() => {
+  const loadChecklist = useCallback(() => {
     setLoading(true);
+
+    // 1. Try localStorage first (instant, always available)
+    try {
+      const savedItems = localStorage.getItem(`checklist-items-${repoId}`);
+      const savedDone = localStorage.getItem(`checklist-done-${repoId}`);
+      if (savedItems) {
+        setItems(JSON.parse(savedItems));
+        setCompleted(savedDone ? JSON.parse(savedDone) : {});
+        setLoading(false);
+        return;
+      }
+    } catch { /* ignore */ }
+
+    // 2. Fall back to Supabase
     fetch(`/api/checklist?repoId=${repoId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -41,11 +55,14 @@ export default function ChecklistPanel({
       .finally(() => setLoading(false));
   }, [repoId]);
 
-  useEffect(() => { fetchChecklist(); }, [fetchChecklist, refreshKey]);
+  useEffect(() => { loadChecklist(); }, [loadChecklist, refreshKey]);
 
   const toggle = (key: string) => {
     const next = { ...completed, [key]: !completed[key] };
     setCompleted(next);
+    // Save to localStorage immediately
+    try { localStorage.setItem(`checklist-done-${repoId}`, JSON.stringify(next)); } catch { /* ignore */ }
+    // Sync to Supabase in background
     fetch("/api/checklist", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

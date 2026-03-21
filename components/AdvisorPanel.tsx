@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GithubRepo } from "@/lib/github";
 import ChecklistPanel from "@/components/ChecklistPanel";
-import type { ChecklistCategory } from "@/lib/extractChecklist";
+import { extractChecklistItems, type ChecklistCategory } from "@/lib/extractChecklist";
+import MarkdownContent from "@/components/MarkdownContent";
 
 type Persona = "frontend" | "backend" | "ux";
 
@@ -67,14 +68,17 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
       }).catch(() => {});
     }
 
-    // Save analyses to DB — checklist API extracts items and persists them
-    setChecklistRefreshKey((k) => k + 1); // show loading state in checklist tab
-    await fetch("/api/checklist", {
+    // Extract items and save to localStorage immediately (always works)
+    const items = extractChecklistItems(collected as Record<ChecklistCategory, string>);
+    try { localStorage.setItem(`checklist-items-${repo.id}`, JSON.stringify(items)); } catch { /* ignore */ }
+    setChecklistRefreshKey((k) => k + 1);
+
+    // Also sync to Supabase in background (for cross-device persistence)
+    fetch("/api/checklist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ repoId: String(repo.id), analyses: collected }),
-    }).catch(console.error);
-    setChecklistRefreshKey((k) => k + 1); // trigger re-fetch with new items
+    }).catch(() => {});
 
     setIsRunning(false);
   };
@@ -161,10 +165,7 @@ export default function AdvisorPanel({ repo }: { repo: GithubRepo }) {
           ) : (
             <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {streams[activeTab] ? (
-                <pre className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: "var(--text-primary)", fontFamily: "inherit" }}>
-                  {streams[activeTab]}
-                  {loading[activeTab] && <span className="cursor" />}
-                </pre>
+                <MarkdownContent content={streams[activeTab]} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-40 gap-3">
                   <div className="text-3xl" style={{ color: "var(--text-muted)" }}>
