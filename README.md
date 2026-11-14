@@ -4,6 +4,8 @@ AI-powered portfolio intelligence for developers. Connect your GitHub account an
 
 ## Features
 
+- **Public review workbench** — `/demo` lets visitors inspect synthetic code, edit authored sample reviews, run six output-contract checks, complete tasks and download Markdown without signing in or making a live AI call.
+- **Reproducible evaluation** — shared TypeScript checks, negative tests and a CLI fixture runner. These validate structure and file references, not model accuracy.
 - **GitHub OAuth** — authenticate and pull your 5 most recent repositories
 - **3 AI Advisors** — each powered by Claude Sonnet, specialized in Frontend, Backend, or UX/UI
 - **Streaming responses** — real-time AI analysis streamed to the UI
@@ -60,6 +62,18 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+Use **Node 22**. To explore the public workbench, open [http://localhost:3000/demo](http://localhost:3000/demo). Its interactions do not call GitHub, Anthropic or Supabase. The existing authenticated application still needs the environment configuration above.
+
+## Validation and engineering decisions
+
+```bash
+npm test       # evaluator regression tests, including fabricated citations
+npm run eval   # authored fixture expectations; nonzero exit on regression
+npm run build  # production compilation and type checks
+```
+
+See [the workbench decision record](docs/review-workbench.md) for architecture, tradeoffs and limitations. The new evaluator runs in the demo and CLI; it does not gate the existing model endpoint. The demo uses authored samples, not live model output, and task completion lasts for the current page session.
 
 ## How It Works
 

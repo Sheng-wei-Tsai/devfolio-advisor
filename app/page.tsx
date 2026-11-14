@@ -77,6 +77,10 @@ export default function HomePage() {
               <GitHubIcon />
               AUTHENTICATE WITH GITHUB
             </Link>
+            <p className="mt-5 text-sm">
+              <Link href="/demo" className="home-demo-link">Explore the review workbench →</Link>
+            </p>
+            <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>No sign-in · inspect sample code and run review checks</p>
           </motion.div>
         </div>
       </motion.div>
