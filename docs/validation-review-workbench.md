@@ -21,6 +21,8 @@ Screenshots:
 - [Desktop](screenshots/review-workbench-desktop.png)
 - [Mobile](screenshots/review-workbench-mobile.png)
 
-Limits: no production deployment, hosted CI execution, live AI benchmark or authenticated OAuth/Anthropic/Supabase end-to-end certification. The public route uses authored fixtures, not recorded live model output. Build validation used existing local environment configuration.
+Limits: no production deployment, live AI benchmark or authenticated OAuth/Anthropic/Supabase end-to-end certification. The public route uses authored fixtures, not recorded live model output. Initial build validation used existing local environment configuration; a subsequent local build also passed with all CI provider variables explicitly set to non-production placeholders.
 
 Hosted follow-up: the new Review evaluation workflow passed for commit `a52729c`. The existing CI failed at lint because the repository had no ESLint configuration and the command prompted interactively. Added `.eslintrc.json` extending the installed `next/core-web-vitals` configuration; local lint now exits successfully. Subsequent hosted CI results are recorded in the pull request.
+
+The next CI run passed lint and type checks, then exposed missing Supabase build variables. The build workflow now uses explicit non-production placeholders, like its other provider placeholders, and Node 22. Compilation should not depend on production database credentials. This does not test database access.
