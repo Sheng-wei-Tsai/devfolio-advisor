@@ -11,6 +11,7 @@ Verified 2026-11-14 with Node 22.12.0. No application dependencies changed.
 | Browser flow | Passed source expansion, three perspectives, valid and flawed review checks, checklist completion, Markdown download contents, empty-input disable, reset and home navigation. No page errors. |
 | Mobile | Passed at 390 × 844 with no horizontal overflow. Desktop at 1440 × 1050 and mobile screenshots visually inspected. |
 | `git diff --check` | Passed. |
+| `npm run lint` | Passed after adding the missing Next.js ESLint configuration; existing custom-font warning remains. |
 | Code memory | `graphify update lib` generated local code graph: 20 nodes / 16 edges. Generated graph artifacts are ignored. |
 
 Browser automation used installed Playwright with installed Google Chrome. The in-app browser execution tool was unavailable; standalone Chromium was terminated during launch. Chrome completed the checks. No browser dependencies were added to the repository, and these local browser checks are not part of the new CI job.
@@ -21,3 +22,5 @@ Screenshots:
 - [Mobile](screenshots/review-workbench-mobile.png)
 
 Limits: no production deployment, hosted CI execution, live AI benchmark or authenticated OAuth/Anthropic/Supabase end-to-end certification. The public route uses authored fixtures, not recorded live model output. Build validation used existing local environment configuration.
+
+Hosted follow-up: the new Review evaluation workflow passed for commit `a52729c`. The existing CI failed at lint because the repository had no ESLint configuration and the command prompted interactively. Added `.eslintrc.json` extending the installed `next/core-web-vitals` configuration; local lint now exits successfully. Subsequent hosted CI results are recorded in the pull request.
