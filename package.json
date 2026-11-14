@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "tsc -p tsconfig.eval.json && node --test tests/*.test.mjs",
+    "eval": "tsc -p tsconfig.eval.json && node scripts/evaluate-reviews.mjs"
   },
   "dependencies": {
     "next": "^15.2.4",
